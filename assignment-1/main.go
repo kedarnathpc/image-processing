@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/jpeg"
 	"os"
 )
 
 func main() {
-	// Open the image file
+	// Open the original image file
 	file, err := os.Open("./images/original.jpg")
 	if err != nil {
 		fmt.Println("Error:", err)
@@ -17,65 +18,136 @@ func main() {
 	}
 	defer file.Close()
 
-	// Decode the image
-	img, _, err := image.Decode(file)
+	// Decode the original image
+	originalImg, _, err := image.Decode(file)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
 
-	// Create folder if it does not exist
-	err = os.MkdirAll("images", os.ModePerm)
+	// Open the red, green, and blue channel images
+	redFile, err := os.Open("./images/red_channel.jpg")
 	if err != nil {
-		fmt.Println("Error creating images folder:", err)
+		fmt.Println("Error:", err)
+		return
+	}
+	defer redFile.Close()
+
+	greenFile, err := os.Open("./images/green_channel.jpg")
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer greenFile.Close()
+
+	blueFile, err := os.Open("./images/blue_channel.jpg")
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer blueFile.Close()
+
+	// Decode the red, green, and blue channel images
+	redChannel, _, err := image.Decode(redFile)
+	if err != nil {
+		fmt.Println("Error:", err)
 		return
 	}
 
-	// Display input image
-	displayImage("Input Image", img)
+	greenChannel, _, err := image.Decode(greenFile)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
 
-	// Split RGB channels
-	redChannel, greenChannel, blueChannel := splitRGBChannels(img)
+	blueChannel, _, err := image.Decode(blueFile)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
 
-	// Display RGB split channel images
-	displayImage("Red Channel", redChannel)
-	displayImage("Green Channel", greenChannel)
-	displayImage("Blue Channel", blueChannel)
+	// Combine images side by side
+	combinedWidth := originalImg.Bounds().Dx() * 4
+	combinedHeight := originalImg.Bounds().Dy()
 
-	// Save RGB split channel images
-	saveImage("images/red_channel.jpg", redChannel)
-	saveImage("images/green_channel.jpg", greenChannel)
-	saveImage("images/blue_channel.jpg", blueChannel)
+	combinedImg := image.NewRGBA(image.Rect(0, 0, combinedWidth, combinedHeight))
 
-	// Enhanced color image using arithmetic operations
-	enhancedImg := enhanceColor(img)
+	drawImage(combinedImg, originalImg, 0, 0)
+	drawImage(combinedImg, redChannel, originalImg.Bounds().Dx(), 0)
+	drawImage(combinedImg, greenChannel, originalImg.Bounds().Dx()*2, 0)
+	drawImage(combinedImg, blueChannel, originalImg.Bounds().Dx()*3, 0)
 
-	// Display enhanced color image
-	displayImage("Enhanced Color Image", enhancedImg)
+	// Plot the combined image
+	plotImage(combinedImg, "images/combined_image_plot.jpg")
 
-	// Save enhanced color image to a new file
-	saveImage("images/enhanced_color_image.jpg", enhancedImg)
+	// Rotate the original image 180 degrees to the right
+	rotatedImg := rotate180(originalImg)
+
+	// Plot the rotated image
+	plotImage(rotatedImg, "images/rotated_plot.jpg")
+
+	// Enhance color of the original image
+	enhancedImg := enhanceColor(originalImg)
+
+	// Plot the enhanced color image
+	plotImage(enhancedImg, "images/enhanced_color_image_plot.jpg")
 }
 
-// Function to split RGB channels
-func splitRGBChannels(img image.Image) (red, green, blue *image.RGBA) {
+// Function to draw an image onto another image at specified position
+func drawImage(dst draw.Image, src image.Image, x, y int) {
+	bounds := src.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	for i := 0; i < width; i++ {
+		for j := 0; j < height; j++ {
+			dst.Set(x+i, y+j, src.At(i, j))
+		}
+	}
+}
+
+// Function to plot image on a graph of pixels with visible axes
+func plotImage(img image.Image, filename string) {
+	bounds := img.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+
+	// Create a new RGBA image with space for axes
+	plot := image.NewRGBA(image.Rect(0, 0, width+20, height+20))
+
+	// Fill the plot with white color
+	draw.Draw(plot, plot.Bounds(), &image.Uniform{color.White}, image.Point{}, draw.Src)
+
+	// Draw the image onto the plot
+	draw.Draw(plot, image.Rect(10, 10, width+10, height+10), img, image.Point{}, draw.Src)
+
+	// Draw the x-axis and y-axis
+	for x := 0; x <= width; x++ {
+		plot.Set(x+10, height+10, color.Black) // x-axis
+	}
+	for y := 0; y <= height; y++ {
+		plot.Set(10, y+10, color.Black) // y-axis
+	}
+
+	// Save the plotted image
+	saveImage(filename, plot)
+}
+
+// Function to rotate image 180 degrees
+func rotate180(img image.Image) *image.RGBA {
 	bounds := img.Bounds()
 	width, height := bounds.Max.X, bounds.Max.Y
 
-	red = image.NewRGBA(image.Rect(0, 0, width, height))
-	green = image.NewRGBA(image.Rect(0, 0, width, height))
-	blue = image.NewRGBA(image.Rect(0, 0, width, height))
+	rotatedImg := image.NewRGBA(image.Rect(0, 0, width, height))
 
 	for x := 0; x < width; x++ {
 		for y := 0; y < height; y++ {
-			r, g, b, _ := img.At(x, y).RGBA()
-			red.Set(x, y, color.RGBA{uint8(r >> 8), 0, 0, 255})
-			green.Set(x, y, color.RGBA{0, uint8(g >> 8), 0, 255})
-			blue.Set(x, y, color.RGBA{0, 0, uint8(b >> 8), 255})
+			rotatedX := width - x - 1
+			rotatedY := height - y - 1
+			rotatedImg.Set(rotatedX, rotatedY, img.At(x, y))
 		}
 	}
 
-	return red, green, blue
+	return rotatedImg
 }
 
 // Function to enhance color using arithmetic operations
@@ -89,21 +161,13 @@ func enhanceColor(img image.Image) *image.RGBA {
 		for y := 0; y < height; y++ {
 			r, g, b, a := img.At(x, y).RGBA()
 
-			// Enhance the color (example: increasing red component)
-			r = r * 2 // You can adjust this operation based on your enhancement requirement
-			// Similar operations for green and blue channels can be applied here
+			r = r * 2
 
 			enhancedImg.Set(x, y, color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(a >> 8)})
 		}
 	}
 
 	return enhancedImg
-}
-
-// Function to display image
-func displayImage(title string, img image.Image) {
-	fmt.Println("Displaying", title)
-	// You need to implement your own method to display images as per your environment
 }
 
 // Function to save image to file
